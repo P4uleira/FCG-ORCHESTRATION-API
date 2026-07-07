@@ -2,20 +2,38 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: fcg-rabbitmq
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
       - fcg-network
 
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: fcg-sqlserver
+    restart: unless-stopped
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: ${SQLSERVER_ACCEPT_EULA}
+      SA_PASSWORD: ${SQLSERVER_SA_PASSWORD}
+      MSSQL_PID: ${SQLSERVER_PID}
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - fcg-network
+
 volumes:
   rabbitmq_data:
+  sqlserver_data:
 
 networks:
   fcg-network:
+    name: fcg-network
     driver: bridge
