@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users-api
+  labels:
+    app: users-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users-api
+  template:
+    metadata:
+      labels:
+        app: users-api
+    spec:
+      restartPolicy: Always
+
+      initContainers:
+        - name: wait-for-rabbitmq
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z rabbitmq 5672; do
+                echo "Aguardando RabbitMQ..."
+                sleep 3
+              done
+
+        - name: wait-for-sqlserver
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z sqlserver 1433; do
+                echo "Aguardando SQL Server..."
+                sleep 3
+              done
+
+      containers:
+        - name: users-api
+          image: fcg-users-api:1.0
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://+:8080"
+
+            - name: ASPNETCORE_ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: ASPNETCORE_ENVIRONMENT
+
+            - name: ConnectionStrings__DefaultConnection
+              valueFrom:
+                secretKeyRef:
+                  name: fcg-secret
+                  key: UsersConnectionString
+
+            - name: RabbitMq__Host
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: RabbitMq__Host
+
+            - name: RabbitMq__Username
+              valueFrom:
+                secretKeyRef:
+                  name: fcg-secret
+                  key: RabbitMq__Username
+
+            - name: RabbitMq__Password
+              valueFrom:
+                secretKeyRef:
+                  name: fcg-secret
+                  key: RabbitMq__Password
+
+            - name: Jwt__Key
+              valueFrom:
+                secretKeyRef:
+                  name: fcg-secret
+                  key: Jwt__Key
+
+            - name: Jwt__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Jwt__Issuer
+
+            - name: Jwt__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Jwt__Audience
+
+            - name: Jwt__ExpirationMinutes
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Jwt__ExpirationMinutes

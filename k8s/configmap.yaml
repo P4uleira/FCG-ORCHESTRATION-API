@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fcg-config
+data:
+  ASPNETCORE_ENVIRONMENT: "Development"
+
+  RabbitMq__Host: "rabbitmq"
+
+  Jwt__Issuer: "FCG.Users.Api"
+  Jwt__Audience: "FCG.Client"
+  Jwt__ExpirationMinutes: "60"
+
+  MSSQL_PID: "Developer"
+  ACCEPT_EULA: "Y"

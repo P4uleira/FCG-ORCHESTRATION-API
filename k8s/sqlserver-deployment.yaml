@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlserver
+  labels:
+    app: sqlserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sqlserver
+  template:
+    metadata:
+      labels:
+        app: sqlserver
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: sqlserver
+          image: mcr.microsoft.com/mssql/server:2022-latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: sqlserver
+              containerPort: 1433
+              protocol: TCP
+
+          env:
+            - name: ACCEPT_EULA
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: ACCEPT_EULA
+
+            - name: MSSQL_PID
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: MSSQL_PID
+
+            - name: MSSQL_SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: fcg-secret
+                  key: MSSQL_SA_PASSWORD
