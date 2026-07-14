@@ -48,6 +48,12 @@ services:
       Jwt__Issuer: FCG.Users.Api
       Jwt__Audience: FCG.Client
       Jwt__ExpirationMinutes: 60
+
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+      Logging__LogLevel__MassTransit: Warning
+      Logging__LogLevel__RabbitMQ.Client: Warning
     depends_on:
       - rabbitmq
       - sqlserver
@@ -69,6 +75,15 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_DEFAULT_USER}
       RabbitMq__Password: ${RABBITMQ_DEFAULT_PASS}
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: FCG.Users.Api
+      Jwt__Audience: FCG.Client
+
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+      Logging__LogLevel__MassTransit: Warning
+      Logging__LogLevel__RabbitMQ.Client: Warning
     depends_on:
       - rabbitmq
       - sqlserver
@@ -90,6 +105,12 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_DEFAULT_USER}
       RabbitMq__Password: ${RABBITMQ_DEFAULT_PASS}
+
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+      Logging__LogLevel__MassTransit: Warning
+      Logging__LogLevel__RabbitMQ.Client: Warning
     depends_on:
       - rabbitmq
       - sqlserver
@@ -110,6 +131,12 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__Username: ${RABBITMQ_DEFAULT_USER}
       RabbitMq__Password: ${RABBITMQ_DEFAULT_PASS}
+
+      Logging__LogLevel__Default: Information
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+      Logging__LogLevel__MassTransit: Warning
+      Logging__LogLevel__RabbitMQ.Client: Warning
     depends_on:
       - rabbitmq
     networks:
