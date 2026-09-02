@@ -1275,6 +1275,57 @@ kubectl rollout restart deployment/notifications-api
 
 ---
 
+## API Gateway (Kong)
+
+A partir da Fase 3, todo o tráfego externo para UsersAPI e CatalogAPI passa
+obrigatoriamente pelo **Kong API Gateway**, que assume duas responsabilidades:
+
+- **Roteamento único**: os clientes não acessam mais `users-service` e
+  `catalog-service` diretamente — todas as chamadas vão para o Kong, que
+  encaminha internamente para o serviço correto.
+- **Validação de JWT na borda**: rotas administrativas/autenticadas exigem
+  um token JWT válido (assinatura e expiração) já no Gateway, antes mesmo
+  de a requisição chegar à API.
+
+Kong roda em modo **DB-less** (sem Postgres/Cassandra): toda a configuração
+de Services, Routes e do plugin JWT vive em um único arquivo declarativo
+(`kong.yml`), versionado como uma chave dentro do `fcg-secret` (por conter
+o segredo de assinatura do JWT) e montado como arquivo no container via
+volume.
+
+### Portas
+
+| Serviço | Porta |
+| --- | --- |
+| Kong (proxy) | `8000` |
+| Kong (admin API) | `8001` |
+
+### Rotas expostas
+
+| Método | Path | Autenticação |
+| --- | --- | --- |
+| POST | `/api/users` | Pública |
+| GET | `/api/users` | JWT obrigatório |
+| POST | `/api/auth/login` | Pública |
+| GET | `/api/auth/me` | JWT obrigatório |
+| GET | `/api/games` | Pública |
+| POST/PUT/DELETE | `/api/games` | JWT obrigatório |
+
+### Testando localmente
+
+```powershell
+kubectl apply -f k8s\
+kubectl get pods -w
+kubectl port-forward service/kong 8000:8000
+```
+
+Sem token, `GET /api/games` deve retornar `200` e `GET /api/auth/me` deve
+retornar `401`. Após autenticar em `POST /api/auth/login` e enviar o token
+recebido no header `Authorization: Bearer <token>`, `GET /api/auth/me`
+passa a retornar `200`.
+
+---
+
 ## Acompanhar o Rollout
 
 Após reiniciar um Deployment:
