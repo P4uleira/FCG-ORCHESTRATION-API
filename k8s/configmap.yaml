@@ -13,3 +13,7 @@ data:
 
   MSSQL_PID: "Developer"
   ACCEPT_EULA: "Y"
+
+  Mongo__ConnectionString: "mongodb://mongodb-service:27017"
+  Mongo__Database: "FCGCatalogHistoryDb"
+  Redis__ConnectionString: "redis-service:6379"

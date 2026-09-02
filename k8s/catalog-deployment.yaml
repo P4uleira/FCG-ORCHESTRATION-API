@@ -36,6 +36,26 @@ spec:
                 echo "Aguardando SQL Server..."
                 sleep 3
               done
+        - name: wait-for-mongodb
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z mongodb-service 27017; do
+                echo "Aguardando MongoDB..."
+                sleep 3
+              done
+        - name: wait-for-redis
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z redis-service 6379; do
+                echo "Aguardando Redis..."
+                sleep 3
+              done
       containers:
         - name: catalog-api
           image: fcg-catalog-api:1.0
@@ -87,3 +107,18 @@ spec:
                 configMapKeyRef:
                   name: fcg-config
                   key: Jwt__Audience
+            - name: Mongo__ConnectionString
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Mongo__ConnectionString
+            - name: Mongo__Database
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Mongo__Database
+            - name: Redis__ConnectionString
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Redis__ConnectionString
