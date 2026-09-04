@@ -18,6 +18,8 @@ O repositório reúne:
 * Secret;
 * Deployments;
 * Services;
+* API Gateway (Kong);
+* banco NoSQL (MongoDB) e cache distribuído (Redis);
 * instruções de execução;
 * procedimentos de validação;
 * comandos de monitoramento;
@@ -39,6 +41,11 @@ As duas formas são alternativas.
 
 Não é necessário executar o Docker Compose e os manifestos Kubernetes ao mesmo tempo.
 
+> **Nota:** o API Gateway (Kong), o MongoDB e o Redis, introduzidos na Fase 3,
+> só estão disponíveis na execução via **Kubernetes**. O Docker Compose
+> continua cobrindo apenas a infraestrutura da Fase 2 (SQL Server, RabbitMQ
+> e os quatro microsserviços).
+
 ---
 
 # Objetivo do Repositório
@@ -58,7 +65,10 @@ O ambiente centraliza:
 * injeção das variáveis de ambiente;
 * inicialização dos Consumers;
 * persistência dos bancos de dados;
-* execução dos serviços em Kubernetes.
+* execução dos serviços em Kubernetes;
+* roteamento único de entrada via API Gateway;
+* histórico de compras em banco NoSQL;
+* cache distribuído para consultas frequentes.
 
 O repositório também funciona como documentação principal da solução, apresentando o fluxo completo desde a inicialização da infraestrutura até a realização de uma compra.
 
@@ -112,7 +122,9 @@ Responsável por:
 * publicação do `OrderPlacedEvent`;
 * consumo do `PaymentProcessedEvent`;
 * inclusão do jogo na biblioteca;
-* prevenção de duplicidade.
+* prevenção de duplicidade;
+* registro do histórico de compras no MongoDB;
+* cache da listagem de jogos via Redis.
 
 Porta Docker:
 
@@ -171,6 +183,8 @@ Responsável por:
 * executar SQL Server e RabbitMQ;
 * executar os quatro microsserviços;
 * organizar os manifestos Kubernetes;
+* executar o API Gateway (Kong);
+* executar o MongoDB e o Redis;
 * documentar a execução completa da solução.
 
 ---
@@ -201,6 +215,12 @@ MassTransit
     +
 SQL Server
     +
+MongoDB
+    +
+Redis
+    +
+Kong API Gateway
+    +
 Docker
     +
 Kubernetes
@@ -218,12 +238,19 @@ Kubernetes
                                       │ HTTP
                                       ▼
                           ┌───────────────────────┐
-                          │       UsersAPI        │
-                          │ Cadastro e Login JWT  │
+                          │    Kong API Gateway    │
+                          │  Roteamento + JWT      │
                           └───────────┬───────────┘
                                       │
-                                      │ UserCreatedEvent
-                                      ▼
+                          ┌───────────┴───────────┐
+                          ▼                       ▼
+                 ┌────────────────┐      ┌────────────────┐
+                 │    UsersAPI    │      │   CatalogAPI    │
+                 │ Cadastro/Login │      │ Catálogo/Compra │
+                 └───────┬────────┘      └───────┬────────┘
+                         │                        │
+                         │ UserCreatedEvent       │ Redis (cache)
+                         ▼                        │ MongoDB (histórico)
                           ┌───────────────────────┐
                           │       RabbitMQ        │
                           └───────────┬───────────┘
@@ -240,7 +267,7 @@ Fluxo de compra:
 ```text
 Cliente autenticado
         │
-        │ JWT
+        │ JWT (via Kong)
         ▼
 CatalogAPI
         │
@@ -255,19 +282,21 @@ PaymentsAPI
         ▼
 RabbitMQ
         │
-        ├───────────────────────────────┐
-        │                               │
-        ▼                               ▼
-CatalogAPI                    NotificationsAPI
-adiciona o jogo               simula confirmação
-à biblioteca                  de compra
+        ├────────────────────────────────────┐
+        │                                    │
+        ▼                                    ▼
+CatalogAPI                          NotificationsAPI
+adiciona o jogo à biblioteca        simula confirmação
+(SQL Server) e registra o
+histórico da tentativa
+(MongoDB)
 ```
 
 ---
 
 # Fluxos da Solução
 
-A arquitetura possui dois fluxos principais.
+A arquitetura possui três fluxos principais.
 
 ---
 
@@ -278,7 +307,7 @@ O cadastro começa na UsersAPI.
 ```text
 Cliente
       │
-      │ POST /api/users
+      │ POST /api/users (via Kong)
       ▼
 UsersAPI
       │
@@ -313,7 +342,7 @@ O login é realizado na UsersAPI.
 ```text
 Cliente
       │
-      │ e-mail e senha
+      │ e-mail e senha (via Kong)
       ▼
 UsersAPI
       │
@@ -333,7 +362,7 @@ Email
 Role
 ```
 
-O mesmo conjunto de configurações JWT deve ser utilizado pela UsersAPI e CatalogAPI:
+O mesmo conjunto de configurações JWT deve ser utilizado pela UsersAPI, pela CatalogAPI e pelo **Kong** (validação na borda):
 
 * chave;
 * issuer;
@@ -348,7 +377,7 @@ A compra é iniciada na CatalogAPI.
 ```text
 Cliente
       │
-      │ JWT
+      │ JWT (via Kong)
       │ POST /api/games/{gameId}/purchase
       ▼
 CatalogAPI
@@ -374,12 +403,15 @@ RabbitMQ
       ▼                            ▼
 CatalogAPI                 NotificationsAPI
 conclui a compra           simula confirmação
+      │
+      ├──► SQL Server (biblioteca do usuário, se aprovado)
+      └──► MongoDB (histórico da tentativa: aprovado, rejeitado ou duplicado)
 ```
 
 ### Etapas
 
-1. O usuário realiza login na UsersAPI.
-2. O token JWT é enviado para a CatalogAPI.
+1. O usuário realiza login na UsersAPI (via Kong).
+2. O token JWT é enviado para a CatalogAPI (via Kong).
 3. A CatalogAPI obtém o `UserId` através do token.
 4. O jogo é validado.
 5. Um novo `OrderId` é gerado.
@@ -389,8 +421,9 @@ conclui a compra           simula confirmação
 9. O registro é persistido.
 10. A PaymentsAPI publica o `PaymentProcessedEvent`.
 11. A CatalogAPI recebe o resultado.
-12. O jogo é adicionado à biblioteca quando aprovado.
-13. A NotificationsAPI registra a confirmação simulada.
+12. O jogo é adicionado à biblioteca quando aprovado (SQL Server).
+13. A tentativa (aprovada, rejeitada ou duplicada) é registrada no MongoDB.
+14. A NotificationsAPI registra a confirmação simulada.
 
 ---
 
@@ -402,7 +435,7 @@ A solução utiliza dois tipos de comunicação.
 
 ## Comunicação Síncrona
 
-Realizada através de HTTP.
+Realizada através de HTTP, sempre entrando pelo **Kong API Gateway**.
 
 Utilizada para:
 
@@ -412,6 +445,7 @@ Utilizada para:
 * consulta do catálogo;
 * gerenciamento administrativo;
 * início da compra;
+* consulta do histórico de compras (MongoDB);
 * consulta dos pagamentos;
 * health checks.
 
@@ -442,8 +476,11 @@ Cada microsserviço depende dos contratos dos eventos, e não da implementação
 | DDD                   | Organização do domínio               |
 | CQRS                  | Separação entre comandos e consultas |
 | MediatR               | Encaminhamento dos casos de uso      |
-| Entity Framework Core | Persistência                         |
-| SQL Server            | Banco de dados                       |
+| Entity Framework Core | Persistência relacional              |
+| SQL Server            | Banco de dados relacional            |
+| MongoDB               | Histórico de compras (NoSQL)         |
+| Redis                 | Cache distribuído                    |
+| Kong                  | API Gateway e validação de JWT       |
 | RabbitMQ              | Broker de mensagens                  |
 | MassTransit           | Integração com RabbitMQ              |
 | JWT                   | Autenticação e autorização           |
@@ -526,7 +563,16 @@ FCG-Orchestration-Api
     ├── rabbitmq-service.yaml
     │
     ├── sqlserver-deployment.yaml
-    └── sqlserver-service.yaml
+    ├── sqlserver-service.yaml
+    │
+    ├── kong-deployment.yaml
+    ├── kong-service.yaml
+    │
+    ├── mongodb-deployment.yaml
+    ├── mongodb-service.yaml
+    │
+    ├── redis-deployment.yaml
+    └── redis-service.yaml
 ```
 
 Os nomes efetivos dos arquivos Kubernetes podem variar, mas devem representar os mesmos componentes da infraestrutura.
@@ -537,7 +583,7 @@ Os nomes efetivos dos arquivos Kubernetes podem variar, mas devem representar os
 
 ## SQL Server
 
-Responsável pela persistência dos dados dos microsserviços.
+Responsável pela persistência dos dados relacionais dos microsserviços.
 
 Porta externa:
 
@@ -578,6 +624,52 @@ http://localhost:15672
 
 ---
 
+## MongoDB
+
+Responsável pelo armazenamento do **histórico de compras** da CatalogAPI —
+um dado que só cresce, não tem relacionamento forte com o restante do
+domínio e não compete com o modelo transacional do SQL Server.
+
+Toda tentativa de compra é registrada, independentemente do resultado:
+
+* aprovada (`Approved`);
+* rejeitada (`PaymentRejected`);
+* duplicada (`AlreadyExists`).
+
+A gravação é **best-effort**: se o MongoDB estiver indisponível no momento
+do processamento, o evento é logado como erro, mas o fluxo principal
+(liberação do jogo na biblioteca) não é interrompido.
+
+Porta externa (apenas Kubernetes):
+
+```text
+27017
+```
+
+Roda sem persistência em disco (sem PVC) no cluster local.
+
+---
+
+## Redis
+
+Responsável pelo cache distribuído da listagem de jogos
+(`GET /api/games`) na CatalogAPI, reduzindo a carga no SQL Server em
+consultas repetidas.
+
+Estratégia: cache-aside, com expiração de 60 segundos e invalidação
+automática sempre que um jogo é criado, atualizado ou excluído.
+
+Porta externa (apenas Kubernetes):
+
+```text
+6379
+```
+
+Roda sem persistência em disco (sem PVC) no cluster local — é cache, não
+precisa sobreviver a um reinício.
+
+---
+
 ## Rede Docker
 
 Todos os serviços devem compartilhar a mesma rede Docker.
@@ -600,7 +692,7 @@ Dentro de um container, não deve ser utilizado `localhost` para acessar outro c
 
 ## Volumes
 
-A solução utiliza volumes para preservar os dados.
+A solução utiliza volumes para preservar os dados do Docker Compose.
 
 Exemplos:
 
@@ -621,6 +713,9 @@ Eles são removidos somente quando executado:
 docker compose down -v
 ```
 
+MongoDB e Redis, na execução via Kubernetes, **não** utilizam volumes
+persistentes — ver seções específicas acima.
+
 ---
 
 # Portas da Solução
@@ -634,6 +729,15 @@ docker compose down -v
 | RabbitMQ Management | `http://localhost:15672` |
 | RabbitMQ AMQP       | `localhost:5672`         |
 | SQL Server          | `localhost:1433`         |
+
+> As portas abaixo só existem na execução via **Kubernetes** (Fase 3):
+
+| Serviço              | Porta   |
+| -------------------- | ------- |
+| Kong (proxy)          | `8000`  |
+| Kong (admin API)      | `8001`  |
+| MongoDB               | `27017` |
+| Redis                 | `6379`  |
 
 ---
 
@@ -651,7 +755,16 @@ A NotificationsAPI possui Swagger configurado, mas não expõe endpoints de neg�
 
 No ambiente Docker, os microsserviços utilizam `Production` por padrão. Como o Swagger é habilitado somente em `Development`, ele pode não estar disponível durante a execução em containers.
 
-Nesse cenário, utilize os health checks e comandos `curl` para validar os serviços.
+No Kubernetes local, o `ASPNETCORE_ENVIRONMENT` está como `Development`
+(ver `configmap.yaml`), então o Swagger fica disponível via port-forward
+direto no Service de cada API — **o Swagger não passa pelo Kong**:
+
+```powershell
+kubectl port-forward service/users-service 8080:8080
+kubectl port-forward service/catalog-service 8081:8081
+```
+
+Nesse cenário, utilize os health checks e comandos `curl` para validar os serviços quando o Swagger não estiver disponível.
 
 ---
 
@@ -704,7 +817,7 @@ Respostas esperadas:
 
 Os health checks atuais confirmam a disponibilidade HTTP das aplicações.
 
-Eles não verificam profundamente a disponibilidade do SQL Server ou RabbitMQ.
+Eles não verificam profundamente a disponibilidade do SQL Server, RabbitMQ, MongoDB ou Redis.
 
 # Pré-requisitos
 
@@ -779,9 +892,9 @@ Caso os repositórios estejam em outro diretório, os caminhos deverão ser ajus
 
 # Configuração do Ambiente
 
-Todas as informações sensíveis da solução são centralizadas através do arquivo `.env`, localizado na raiz do repositório **FCG-Orchestration-Api**.
+Todas as informações sensíveis da solução são centralizadas através do arquivo `.env`, localizado na raiz do repositório **FCG-Orchestration-Api** (Docker Compose), ou do `secret.yaml` (Kubernetes).
 
-Exemplo:
+Exemplo (`.env`):
 
 ```env
 # SQL Server
@@ -802,6 +915,12 @@ CATALOG_CONNECTION=Server=sqlserver,1433;Database=FCGCatalogDb;User Id=sa;Passwo
 PAYMENTS_CONNECTION=Server=sqlserver,1433;Database=FCGPaymentsDb;User Id=sa;Password=${SQLSERVER_PASSWORD};TrustServerCertificate=True;
 ```
 
+No Kubernetes, o `secret.yaml` centraliza, além das credenciais acima, a
+configuração declarativa do Kong (`kong.yml`). O `configmap.yaml` centraliza
+as configurações não sensíveis do MongoDB e do Redis (`Mongo__ConnectionString`,
+`Mongo__Database`, `Redis__ConnectionString`), já que não usam autenticação
+neste ambiente de estudo.
+
 Essas variáveis são compartilhadas entre os containers através do Docker Compose e dos manifestos Kubernetes.
 
 **Nunca publique credenciais reais no repositório.**
@@ -820,6 +939,9 @@ Todos os serviços serão iniciados automaticamente:
 * CatalogAPI
 * PaymentsAPI
 * NotificationsAPI
+
+> Kong, MongoDB e Redis **não** fazem parte do Docker Compose nesta versão —
+> estão disponíveis apenas na execução via Kubernetes.
 
 ---
 
@@ -1039,7 +1161,7 @@ Utilize essa opção apenas quando desejar recriar toda a infraestrutura.
 
 # Execução com Kubernetes
 
-Além do Docker Compose, toda a infraestrutura da plataforma pode ser executada utilizando **Kubernetes**, permitindo a orquestração dos microsserviços em um cluster local.
+Além do Docker Compose, toda a infraestrutura da plataforma pode ser executada utilizando **Kubernetes**, permitindo a orquestração dos microsserviços em um cluster local. É nesta modalidade que o **Kong**, o **MongoDB** e o **Redis** (Fase 3) estão disponíveis.
 
 Os manifestos Kubernetes estão centralizados no diretório:
 
@@ -1105,6 +1227,9 @@ Esse comando cria automaticamente:
 * Secret;
 * SQL Server;
 * RabbitMQ;
+* MongoDB;
+* Redis;
+* Kong API Gateway;
 * UsersAPI;
 * CatalogAPI;
 * PaymentsAPI;
@@ -1131,6 +1256,9 @@ payments-api-xxxxxxxxxx
 notifications-api-xxxxxxxxxx
 rabbitmq-xxxxxxxxxx
 sqlserver-xxxxxxxxxx
+kong-xxxxxxxxxx
+mongodb-xxxxxxxxxx
+redis-xxxxxxxxxx
 ```
 
 Todos devem apresentar:
@@ -1139,6 +1267,11 @@ Todos devem apresentar:
 STATUS = Running
 READY = 1/1
 ```
+
+O `catalog-api` e o `kong` podem demorar um pouco mais para ficar `Running`,
+pois possuem `initContainers` que aguardam suas dependências (SQL Server,
+RabbitMQ, MongoDB, Redis, UsersAPI, CatalogAPI, conforme o caso) estarem
+disponíveis antes de subir.
 
 ---
 
@@ -1169,6 +1302,9 @@ payments-api
 notifications-api
 rabbitmq
 sqlserver
+kong
+mongodb
+redis
 ```
 
 ---
@@ -1197,7 +1333,9 @@ kubectl get configmaps
 kubectl get secrets
 ```
 
-As credenciais sensíveis utilizadas pelos microsserviços devem estar armazenadas como Secrets.
+As credenciais sensíveis utilizadas pelos microsserviços, incluindo a
+configuração declarativa do Kong (`kong.yml`), devem estar armazenadas como
+Secrets.
 
 ---
 
@@ -1231,6 +1369,14 @@ kubectl logs deployment/payments-api
 
 ```powershell
 kubectl logs deployment/notifications-api
+```
+
+---
+
+### Kong
+
+```powershell
+kubectl logs deployment/kong
 ```
 
 ---
@@ -1273,6 +1419,12 @@ kubectl rollout restart deployment/payments-api
 kubectl rollout restart deployment/notifications-api
 ```
 
+### Kong
+
+```powershell
+kubectl rollout restart deployment/kong
+```
+
 ---
 
 ## API Gateway (Kong)
@@ -1302,14 +1454,17 @@ volume.
 
 ### Rotas expostas
 
-| Método | Path | Autenticação |
-| --- | --- | --- |
-| POST | `/api/users` | Pública |
-| GET | `/api/users` | JWT obrigatório |
-| POST | `/api/auth/login` | Pública |
-| GET | `/api/auth/me` | JWT obrigatório |
-| GET | `/api/games` | Pública |
-| POST/PUT/DELETE | `/api/games` | JWT obrigatório |
+| Método | Path | Autenticação | Observação |
+| --- | --- | --- | --- |
+| POST | `/api/users` | Pública | Cadastro |
+| GET | `/api/users` | JWT obrigatório | Listagem administrativa |
+| POST | `/api/auth/login` | Pública | Login |
+| GET | `/api/auth/me` | JWT obrigatório | Dados do usuário autenticado |
+| GET | `/api/games` | Pública | Passa pelo cache Redis |
+| POST/PUT/DELETE | `/api/games` | JWT obrigatório | Administração do catálogo |
+| POST | `/api/games/{gameId}/purchase` | JWT obrigatório | Início da compra |
+| GET | `/api/library/{userId}` | Pública | Biblioteca do usuário (SQL Server) |
+| GET | `/api/library/{userId}/history` | JWT obrigatório | Histórico de compras (MongoDB) |
 
 ### Testando localmente
 
@@ -1323,6 +1478,75 @@ Sem token, `GET /api/games` deve retornar `200` e `GET /api/auth/me` deve
 retornar `401`. Após autenticar em `POST /api/auth/login` e enviar o token
 recebido no header `Authorization: Bearer <token>`, `GET /api/auth/me`
 passa a retornar `200`.
+
+---
+
+## Banco NoSQL (MongoDB) e Cache Distribuído (Redis)
+
+A partir da Fase 3, o **CatalogAPI** passou a usar duas peças de
+infraestrutura adicionais, além do SQL Server já existente:
+
+- **MongoDB**: armazena o **histórico de compras** (aprovadas, rejeitadas e
+  duplicadas), um dado que só cresce, não tem relacionamento forte com o
+  restante do domínio e não compete com o modelo transacional do SQL Server.
+- **Redis**: cache distribuído para a listagem de jogos
+  (`GET /api/games`), reduzindo carga no SQL Server em consultas repetidas.
+
+Ambos rodam **sem persistência em disco** (sem PVC) no cluster local — dado
+de estudo tolera reinício, e isso mantém o padrão "stateless" já usado no
+Kong.
+
+### Fluxo do histórico de compras
+
+```text
+PaymentsAPI
+    │
+    ▼ (RabbitMQ: PaymentProcessedEvent)
+CatalogAPI (CompletePurchaseCommandHandler)
+    │
+    ├──► SQL Server (biblioteca do usuário, se aprovado)
+    │
+    └──► MongoDB (histórico da tentativa: aprovado, rejeitado ou duplicado)
+```
+
+A gravação no MongoDB é **best-effort**: se o Mongo estiver indisponível, o
+evento é logado como erro, mas o fluxo principal (liberação do jogo na
+biblioteca) não é interrompido.
+
+### Fluxo do cache de listagem
+
+```text
+GET /api/games
+    │
+    ▼
+Existe em cache no Redis?
+    ├── Sim → retorna do Redis (Cache HIT)
+    └── Não → consulta SQL Server, salva no Redis por 60s, retorna (Cache MISS)
+```
+
+O cache é invalidado automaticamente sempre que um jogo é criado, atualizado
+ou excluído.
+
+### Portas
+
+| Serviço | Porta |
+| --- | --- |
+| MongoDB | `27017` |
+| Redis | `6379` |
+
+### Testando localmente
+
+```powershell
+kubectl apply -f k8s\
+kubectl get pods -w
+kubectl port-forward service/kong 8000:8000
+kubectl logs -f deployment/catalog-api
+```
+
+Duas chamadas seguidas a `GET /api/games` devem mostrar `Cache MISS` e depois
+`Cache HIT` nos logs do `catalog-api`. Após uma compra completa,
+`GET /api/library/{userId}/history` (com token) deve retornar o registro
+gravado no MongoDB.
 
 ---
 
@@ -1375,7 +1599,7 @@ Todos devem retornar:
 
 ## 2. Criar um Usuário
 
-Utilize a UsersAPI para cadastrar um novo usuário.
+Utilize a UsersAPI (via Kong, se em Kubernetes) para cadastrar um novo usuário.
 
 Ao concluir o cadastro:
 
@@ -1406,7 +1630,8 @@ Utilize um token de administrador para cadastrar um novo jogo na CatalogAPI.
 Confirme:
 
 * criação do registro;
-* retorno HTTP `201 Created`.
+* retorno HTTP `201 Created`;
+* invalidação do cache Redis da listagem (`GET /api/games` volta a mostrar `Cache MISS` nos logs).
 
 ---
 
@@ -1418,7 +1643,7 @@ Execute:
 GET /api/games
 ```
 
-Confirme que o jogo criado está disponível.
+Confirme que o jogo criado está disponível e que a segunda chamada seguida vem do cache Redis (`Cache HIT` nos logs).
 
 ---
 
@@ -1470,12 +1695,28 @@ A PaymentsAPI deverá:
 Após o pagamento aprovado:
 
 * a CatalogAPI consumirá o evento;
-* o jogo será adicionado à biblioteca do usuário;
+* o jogo será adicionado à biblioteca do usuário (SQL Server);
 * duplicidades serão evitadas automaticamente.
 
 ---
 
-## 9. Validar as Notificações
+## 9. Validar o Histórico de Compras (MongoDB)
+
+Execute, com o token do usuário que realizou a compra:
+
+```http
+GET /api/library/{userId}/history
+```
+
+Confirme:
+
+* retorno `200 OK` com token válido;
+* retorno `401 Unauthorized` sem token;
+* presença do registro da compra, com `status: "Approved"`.
+
+---
+
+## 10. Validar as Notificações
 
 A NotificationsAPI deverá registrar:
 
@@ -1557,6 +1798,35 @@ Confirme:
 
 ---
 
+## MongoDB ou Redis indisponíveis
+
+Verifique:
+
+```powershell
+kubectl logs deployment/mongodb
+kubectl logs deployment/redis
+```
+
+Confirme que os nomes dos Services (`mongodb-service`, `redis-service`)
+usados nas connection strings do `configmap.yaml` batem exatamente com os
+nomes reais dos Services (`kubectl get svc`) — divergência de nome é a causa
+mais comum do `catalog-api` ficar preso em `Init`.
+
+---
+
+## Kong retornando 404 em vez de 401
+
+Geralmente indica que o `path` da requisição não bate com nenhuma rota
+declarada no `kong.yml`. Confirme o path exato e o método HTTP utilizado.
+
+## Kong retornando 401 mesmo com token válido
+
+Confirme que o `iss` do token (claim `issuer`) é exatamente igual ao `key`
+configurado no `consumer` do `kong.yml`, e que o `secret` da credential
+JWT é o mesmo `Jwt__Key` usado pela UsersAPI para assinar o token.
+
+---
+
 ## Erros de JWT
 
 Confirme que:
@@ -1565,7 +1835,8 @@ Confirme que:
 * `Jwt__Issuer`;
 * `Jwt__Audience`
 
-são exatamente os mesmos utilizados pela UsersAPI.
+são exatamente os mesmos utilizados pela UsersAPI, pela CatalogAPI e pelo
+Kong.
 
 ---
 
@@ -1603,7 +1874,7 @@ Ou altere o mapeamento das portas.
 
 # Checklist Final
 
-Antes da entrega do projeto, confirme:
+Confirme:
 
 ## Infraestrutura
 
@@ -1611,6 +1882,9 @@ Antes da entrega do projeto, confirme:
 * [ ] Kubernetes habilitado (quando utilizado).
 * [ ] SQL Server em execução.
 * [ ] RabbitMQ em execução.
+* [ ] MongoDB em execução (Kubernetes).
+* [ ] Redis em execução (Kubernetes).
+* [ ] Kong em execução (Kubernetes).
 * [ ] Rede Docker criada.
 * [ ] Volumes criados.
 
@@ -1635,6 +1909,17 @@ Antes da entrega do projeto, confirme:
 
 ---
 
+## Fase 3 — Gateway, NoSQL e Cache
+
+* [ ] Kong roteia corretamente para UsersAPI e CatalogAPI.
+* [ ] Kong bloqueia rotas protegidas sem token válido (`401`).
+* [ ] `GET /api/games` retorna `Cache HIT` na segunda chamada.
+* [ ] Cache é invalidado após criar/atualizar/excluir um jogo.
+* [ ] Histórico de compra é gravado no MongoDB após uma compra.
+* [ ] `GET /api/library/{userId}/history` exige token válido.
+
+---
+
 ## Validação
 
 * [ ] Health Checks respondem corretamente.
@@ -1652,4 +1937,10 @@ O repositório **FCG-Orchestration-Api** centraliza toda a infraestrutura necess
 
 Com o suporte a **Docker Compose** e **Kubernetes**, a solução pode ser executada tanto em ambiente de desenvolvimento quanto em um ambiente orquestrado, mantendo a mesma arquitetura baseada em microsserviços.
 
-A utilização de **RabbitMQ**, **MassTransit**, **JWT**, **Entity Framework Core**, **SQL Server** e **Docker** garante uma solução desacoplada, escalável e aderente aos princípios de **DDD**, **CQRS** e **Clean Architecture**, permitindo a evolução independente de cada microsserviço e facilitando futuras expansões da plataforma.
+A partir da Fase 3, a solução (em Kubernetes) passa a contar também com um
+**API Gateway (Kong)** como ponto único de entrada e validação de JWT, um
+banco **NoSQL (MongoDB)** para o histórico de compras e um **cache
+distribuído (Redis)** para a listagem de jogos — reforçando os pilares de
+escalabilidade e desempenho da plataforma.
+
+A utilização de **RabbitMQ**, **MassTransit**, **JWT**, **Entity Framework Core**, **SQL Server**, **MongoDB**, **Redis**, **Kong** e **Docker** garante uma solução desacoplada, escalável e aderente aos princípios de **DDD**, **CQRS** e **Clean Architecture**, permitindo a evolução independente de cada microsserviço e facilitando futuras expansões da plataforma.
