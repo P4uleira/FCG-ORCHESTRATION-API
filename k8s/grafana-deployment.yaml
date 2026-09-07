@@ -47,7 +47,13 @@ spec:
               mountPath: /etc/grafana/provisioning/datasources/datasource.yml
               subPath: datasource.yml
               readOnly: true
+            - name: grafana-dashboards-provisioning-volume
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
       volumes:
         - name: grafana-datasources-volume
           configMap:
             name: grafana-datasources
+        - name: grafana-dashboards-provisioning-volume
+          configMap:
+            name: grafana-dashboards-provisioning
