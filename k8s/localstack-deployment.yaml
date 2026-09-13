@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  labels:
+    app: localstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: localstack
+          image: localstack/localstack:3.4.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICES
+              value: "sqs"
+          ports:
+            - name: http
+              containerPort: 4566
+              protocol: TCP

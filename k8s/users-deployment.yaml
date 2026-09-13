@@ -41,7 +41,7 @@ spec:
 
       containers:
         - name: users-api
-          image: fcg-users-api:1.0
+          image: fcg-users-api:sqs-fix
           imagePullPolicy: IfNotPresent
 
           ports:
@@ -106,3 +106,14 @@ spec:
                 configMapKeyRef:
                   name: fcg-config
                   key: Jwt__ExpirationMinutes
+
+            - name: Aws__SqsServiceUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Aws__SqsServiceUrl
+            - name: Aws__UserCreatedQueueUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Aws__UserCreatedQueueUrl

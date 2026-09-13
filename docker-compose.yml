@@ -38,7 +38,7 @@ services:
   users-api:
     container_name: fcg-users-api
     build:
-      context: ../FCG-User-Api
+      context: ../FCG-USERS-API
       dockerfile: Dockerfile
     image: fcg-users-api:1.0
     restart: unless-stopped
@@ -71,7 +71,7 @@ services:
   catalog-api:
     container_name: fcg-catalog-api
     build:
-      context: ../FCG-Catalog-Api
+      context: ../FCG-CATALOG-API
       dockerfile: Dockerfile
     image: fcg-catalog-api:1.0
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
   payments-api:
     container_name: fcg-payments-api
     build:
-      context: ../FCG-Payments-Api
+      context: ../FCG-PAYMENTS-API
       dockerfile: Dockerfile
     image: fcg-payments-api:1.0
     restart: unless-stopped
@@ -132,7 +132,7 @@ services:
   notifications-api:
     container_name: fcg-notifications-api
     build:
-      context: ../FCG-Notifications-Api
+      context: ../FCG-NOTIFICATIONS-API
       dockerfile: Dockerfile
     image: fcg-notifications-api:1.0
     restart: unless-stopped

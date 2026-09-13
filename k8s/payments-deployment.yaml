@@ -41,7 +41,7 @@ spec:
 
       containers:
         - name: payments-api
-          image: fcg-payments-api:1.0
+          image: fcg-payments-api:sqs-fix
           imagePullPolicy: IfNotPresent
 
           ports:
@@ -82,3 +82,15 @@ spec:
                 secretKeyRef:
                   name: fcg-secret
                   key: RabbitMq__Password
+
+            - name: Aws__SqsServiceUrl
+              valueFrom:
+                  configMapKeyRef:
+                    name: fcg-config
+                    key: Aws__SqsServiceUrl
+
+            - name: Aws__PaymentProcessedQueueUrl
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Aws__PaymentProcessedQueueUrl

@@ -17,3 +17,7 @@ data:
   Mongo__ConnectionString: "mongodb://mongodb-service:27017"
   Mongo__Database: "FCGCatalogHistoryDb"
   Redis__ConnectionString: "redis-service:6379"
+
+  Aws__SqsServiceUrl: "http://localstack-service:4566"
+  Aws__UserCreatedQueueUrl: "http://localstack-service:4566/000000000000/user-created-event-queue"
+  Aws__PaymentProcessedQueueUrl: "http://localstack-service:4566/000000000000/payment-processed-event-queue"
