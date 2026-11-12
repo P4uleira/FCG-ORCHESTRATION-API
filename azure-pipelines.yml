@@ -1,0 +1,105 @@
+# Pipeline de infraestrutura compartilhada da FIAP Cloud Games no AKS
+# Aplica: namespace, Secret (gerado a partir do Variable Group), ConfigMap,
+# SQL Server, RabbitMQ, MongoDB, Redis, Kong, Prometheus, Grafana e Gateway.
+# Os deployments das APIs (Users/Catalog) são feitos pelas pipelines de cada API.
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - k8s/*
+      - azure-pipelines.yml
+
+pr: none
+
+pool:
+  vmImage: ubuntu-24.04
+
+variables:
+  - group: fcg-secrets          # Library > Variable groups (valores secretos, nunca no repositório)
+  - name: ns
+    value: fcg
+
+steps:
+  - task: Kubernetes@1
+    displayName: 'Login no AKS'
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceEndpoint: 'aks-fcg'
+      command: login
+
+  - bash: kubectl get nodes -o wide
+    displayName: 'Testar conexão com o cluster'
+
+  - bash: kubectl apply -f k8s/namespace.yaml
+    displayName: 'Namespace'
+
+  - bash: |
+      set -euo pipefail
+
+      # Kong: injeta a chave JWT no arquivo declarativo (somente em tempo de execução)
+      envsubst '${JWT_KEY}' < k8s/kong/kong.yml.template > "$AGENT_TEMPDIRECTORY/kong.yml"
+
+      conn() {
+        echo "Server=sqlserver,1433;Database=$1;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;"
+      }
+
+      kubectl -n "$NS" create secret generic fcg-secret \
+        --from-literal=MSSQL_SA_PASSWORD="$SQL_SA_PASSWORD" \
+        --from-literal=RabbitMq__Username="$RABBITMQ_USER" \
+        --from-literal=RabbitMq__Password="$RABBITMQ_PASSWORD" \
+        --from-literal=Jwt__Key="$JWT_KEY" \
+        --from-literal=UsersConnectionString="$(conn FCGUsersDb)" \
+        --from-literal=CatalogConnectionString="$(conn FCGCatalogsDb)" \
+        --from-literal=PaymentsConnectionString="$(conn FCGPaymentsDb)" \
+        --from-literal=GrafanaAdminPassword="$GRAFANA_ADMIN_PASSWORD" \
+        --from-file=kong.yml="$AGENT_TEMPDIRECTORY/kong.yml" \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+      rm -f "$AGENT_TEMPDIRECTORY/kong.yml"
+    displayName: 'Secret fcg-secret (a partir do Variable Group)'
+    env:
+      NS: $(ns)
+      SQL_SA_PASSWORD: $(SQL_SA_PASSWORD)
+      RABBITMQ_USER: $(RABBITMQ_USER)
+      RABBITMQ_PASSWORD: $(RABBITMQ_PASSWORD)
+      JWT_KEY: $(JWT_KEY)
+      GRAFANA_ADMIN_PASSWORD: $(GRAFANA_ADMIN_PASSWORD)
+
+  - bash: |
+      set -euo pipefail
+      kubectl -n "$NS" apply -f k8s/configmap.yaml
+
+      for app in sqlserver rabbitmq mongodb redis; do
+        kubectl -n "$NS" apply -f "k8s/${app}-deployment.yaml" -f "k8s/${app}-service.yaml"
+      done
+
+      for app in kong prometheus grafana; do
+        kubectl -n "$NS" apply -f "k8s/${app}-deployment.yaml" -f "k8s/${app}-service.yaml"
+      done
+      kubectl -n "$NS" apply -f k8s/prometheus-configmap.yaml \
+                             -f k8s/grafana-configmap.yaml \
+                             -f k8s/grafana-dashboards-configmap.yaml
+
+      kubectl apply -f k8s/gateway.yaml
+    displayName: 'Aplicar ConfigMap, bancos, mensageria, Kong, observabilidade e Gateway'
+    env:
+      NS: $(ns)
+
+  - bash: |
+      set -euo pipefail
+      for app in sqlserver rabbitmq mongodb redis; do
+        kubectl -n "$NS" rollout status "deployment/${app}" --timeout=5m
+      done
+    displayName: 'Aguardar bancos e mensageria'
+    env:
+      NS: $(ns)
+
+  - bash: |
+      kubectl -n "$NS" get pods,svc
+      kubectl -n "$NS" get gateway,httproute
+    displayName: 'Status do namespace'
+    env:
+      NS: $(ns)

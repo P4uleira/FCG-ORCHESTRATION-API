@@ -1,0 +1,72 @@
+_format_version: "3.0"
+
+services:
+  - name: users-api
+    url: http://users-service:8080
+    routes:
+      - name: users-register
+        paths: ["/api/users"]
+        methods: ["POST"]
+        strip_path: false
+
+      - name: users-admin-list
+        paths: ["/api/users"]
+        methods: ["GET"]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+
+      - name: users-auth-login
+        paths: ["/api/auth/login"]
+        methods: ["POST"]
+        strip_path: false
+
+      - name: users-auth-me
+        paths: ["/api/auth/me"]
+        methods: ["GET"]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+
+  - name: catalog-api
+    url: http://catalog-service:8081
+    routes:
+      - name: catalog-read
+        paths: ["/api/games"]
+        methods: ["GET"]
+        strip_path: false
+
+      - name: catalog-write
+        paths: ["/api/games"]
+        methods: ["POST", "PUT", "DELETE"]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+
+      - name: catalog-library-read
+        paths: ["/api/library"]
+        methods: ["GET"]
+        strip_path: false
+
+      - name: catalog-library-history
+        paths: ["~/api/library/[^/]+/history$"]
+        methods: ["GET"]
+        strip_path: false
+        regex_priority: 100
+        plugins:
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+
+consumers:
+  - username: fcg-users-api
+    jwt_secrets:
+      - key: FCG.Users.Api
+        algorithm: HS256
+        secret: "${JWT_KEY}"

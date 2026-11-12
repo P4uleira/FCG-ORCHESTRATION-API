@@ -1,0 +1,33 @@
+# Exposição externa da aplicação no AKS (Gateway API - add-on Application Routing)
+# Internet -> Gateway (IP público) -> HTTPRoute -> Kong (API Gateway) -> APIs
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: fcg-gateway
+  namespace: fcg
+spec:
+  gatewayClassName: approuting-istio
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: fcg-route
+  namespace: fcg
+spec:
+  parentRefs:
+    - name: fcg-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: kong
+          port: 8000
