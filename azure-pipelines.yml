@@ -23,12 +23,15 @@ variables:
     value: fcg
 
 steps:
-  - task: Kubernetes@1
-    displayName: 'Login no AKS'
+  # Kubeconfig do AKS guardado como Secure File (Library), criptografado no Azure DevOps
+  - task: DownloadSecureFile@1
+    name: kubeconfig
+    displayName: 'Baixar kubeconfig (Secure File)'
     inputs:
-      connectionType: 'Kubernetes Service Connection'
-      kubernetesServiceEndpoint: 'aks-fcg'
-      command: login
+      secureFile: 'kubeconfig-aks-fcg.yaml'
+
+  - bash: echo "##vso[task.setvariable variable=KUBECONFIG]$(kubeconfig.secureFilePath)"
+    displayName: 'Login no AKS'
 
   - bash: kubectl get nodes -o wide
     displayName: 'Testar conexão com o cluster'
