@@ -5,7 +5,14 @@ metadata:
   labels:
     app: users-api
 spec:
-  replicas: 1
+  replicas: 2
+  revisionHistoryLimit: 5
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: users-api
@@ -41,8 +48,29 @@ spec:
 
       containers:
         - name: users-api
-          image: fcg-users-api:sqs-fix
+          
+          image: acrfcgfiap.azurecr.io/fcg-users-api:IMAGE_TAG
           imagePullPolicy: IfNotPresent
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
 
           ports:
             - name: http
