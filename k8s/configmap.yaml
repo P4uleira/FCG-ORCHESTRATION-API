@@ -21,3 +21,8 @@ data:
   Aws__SqsServiceUrl: "http://host.docker.internal:4566"
   Aws__UserCreatedQueueUrl: "http://host.docker.internal:4566/000000000000/user-created-event-queue"
   Aws__PaymentProcessedQueueUrl: "http://host.docker.internal:4566/000000000000/payment-processed-event-queue"
+
+  # Elasticsearch gerenciado (Elastic Cloud). A API Key fica no Secret (fcg-secrets).
+  # Vazio = busca desativada (a API continua funcionando).
+  Elasticsearch__Url: "https://my-elasticsearch-project-b3db73.es.australiaeast.azure.elastic.cloud:443"
+  Elasticsearch__IndexName: "fcg-games"

@@ -58,6 +58,7 @@ steps:
         --from-literal=CatalogConnectionString="$(conn FCGCatalogsDb)" \
         --from-literal=PaymentsConnectionString="$(conn FCGPaymentsDb)" \
         --from-literal=GrafanaAdminPassword="$GRAFANA_ADMIN_PASSWORD" \
+        --from-literal=Elasticsearch__ApiKey="$ELASTIC_API_KEY" \
         --from-file=kong.yml="$AGENT_TEMPDIRECTORY/kong.yml" \
         --dry-run=client -o yaml | kubectl apply -f -
 
@@ -70,6 +71,7 @@ steps:
       RABBITMQ_PASSWORD: $(RABBITMQ_PASSWORD)
       JWT_KEY: $(JWT_KEY)
       GRAFANA_ADMIN_PASSWORD: $(GRAFANA_ADMIN_PASSWORD)
+      ELASTIC_API_KEY: $(ELASTIC_API_KEY)
 
   - bash: |
       set -euo pipefail

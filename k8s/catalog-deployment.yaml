@@ -7,7 +7,7 @@ metadata:
 spec:
   replicas: 2
   revisionHistoryLimit: 5
-  
+  # Rolling Update sem downtime: sobe 1 pod novo antes de derrubar um antigo
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -65,7 +65,7 @@ spec:
               done
       containers:
         - name: catalog-api
-          
+          # IMAGE_TAG é substituído pela pipeline da API (número do build)
           image: acrfcgfiap.azurecr.io/fcg-catalog-api:IMAGE_TAG
           imagePullPolicy: IfNotPresent
           readinessProbe:
@@ -150,3 +150,19 @@ spec:
                 configMapKeyRef:
                   name: fcg-config
                   key: Redis__ConnectionString
+            - name: Elasticsearch__Url
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Elasticsearch__Url
+            - name: Elasticsearch__IndexName
+              valueFrom:
+                configMapKeyRef:
+                  name: fcg-config
+                  key: Elasticsearch__IndexName
+            - name: Elasticsearch__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: fcg-secret
+                  key: Elasticsearch__ApiKey
+                  optional: true
